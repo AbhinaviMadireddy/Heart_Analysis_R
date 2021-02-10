@@ -1,0 +1,287 @@
+---
+title: "Heart Disease/No Heart Disease"
+author: "Abhinavi Madireddy(am49@illinois.edu)"
+date: "12/07/2020"
+output:
+  html_document: 
+    theme: default
+    toc: yes
+---
+
+```{r, setup, include = FALSE}
+knitr::opts_chunk$set(echo = FALSE, fig.align = 'center')
+```
+
+```{r, load-packages, include = FALSE}
+# load packages
+library(caret) 
+library(dplyr)
+library(tibble)
+library(rpart)
+library(skimr)
+library(rpart.plot)
+```
+
+```{r read-full-data, warning = FALSE, message = FALSE}
+# read full data
+hd = readr::read_csv("C:/Users/madir/OneDrive/Desktop/heart_analysis/hd.csv")
+```
+
+***
+
+## Abstract
+
+The objective of this analysis is to understand if an individual has a heart disease or not utilizing the data that is accessible through non-invasive procedures. The analysis was performed utilizing the information of 920 individuals;performed data analysis, data cleaning, feature engineering and trained knn, decision tree, gradient boosting, random forest models. The random forest model trained on the simple information produced about 80 percent accuracy; therefore using this model an individual can be classified to have heart disease or not with about 80 percent confidence.  
+
+***
+
+## Introduction
+
+Heart disease is one of the leading causes of deaths across the world.The diagnosis of a heart disease involves a series of procedures including few invasive procedures.The goal of this analysis is to understand if an individual has a heart disease or not utilizing the data that is accessible through non-invasive tests. When a patient is suspected to have a heart disease, different levels of tests are performed to reach a conclusion. The doctors begin with less complicated tests and goes ahead with the invasive tests when the results of the previous tests are not conclusive enough.
+
+  The invasive tests can be avoided by developing a statistical model to understand if an individual has a heart disease or not by using the information such as an individual’s age, sex, chest pain type (typical angina, atypical angina, non-anginal pain, asymptomatic), resting blood pressure, cholesterol, fasting blood pressure that could be acquired relatively straightforwardly.
+
+
+***
+
+## Methods
+
+1.Performed exploratory analysis of data.  
+2.Converted chol=0 to 'NA'.  
+3.Removed columns with more than 33% of missing values and then removed rows with remaining missing values.  
+4.Performed train-test split.  
+5.Performed required feature engineering on the train and test data.  
+6.Trained knn, decision tree, gradient boosting and random forest models.  
+
+### Data
+
+The analysis was performed employing the information of individuals from four different regions (Cleveland, Hungary, Switzerland, VA Long Beach). The data from the four regions corresponds to a total of 920 individuals, 14 features (predictors: 13-numeric and 1-character type) and one response variable (num-character type). 
+
+```{r}
+skim(hd)
+```
+The values of zero (irrelevant value) in the “chol” column of the raw data were converted to ‘NA’.  
+```{r}
+plot(chol~age,data=hd,pch=20)
+grid()
+#Handling chol=0 values 
+hd[which(hd$chol==0),]$chol=NA
+```
+
+The missing values (‘?’ in raw data replaced by ‘NA’ during data cleaning+ ’NA’ corresponding to zero values of “chol”) were handled by removing the columns (slope, ca, thal) that contained more than 33% missing values.  
+
+```{r}
+#Handling Missing values 
+na_prop = function(x) {
+  mean(is.na(x))
+}
+
+sapply(hd, na_prop)
+
+hd = hd[, !sapply(hd, na_prop) > 0.33]
+
+```
+
+Following the data pre-processing, the data was split into train and test splits (80:20) using the createDataPartition().
+
+```{r}
+#Train-Test split
+set.seed(127)
+trn_idx=createDataPartition(hd$num,p=0.80,list=TRUE)
+hd_trn=hd[trn_idx$Resample1,]
+hd_tst=hd[-trn_idx$Resample1,]
+```
+
+The remaining NA values in train data after removing columns containing more than 33% of NA were replaced with means or medians of the column values.
+
+```{r}
+hd_trn[which(is.na(hd_trn$chol)),]$chol=mean(hd_trn[which(!is.na(hd_trn$chol)),]$chol)
+hd_trn[which(is.na(hd_trn$trestbps)),]$trestbps=mean(hd_trn[which(!is.na(hd_trn$trestbps)),]$trestbps)
+hd_trn[which(is.na(hd_trn$fbs)),]$fbs=median(hd_trn[which(!is.na(hd_trn$fbs)),]$fbs)
+hd_trn[which(is.na(hd_trn$restecg)),]$restecg=median(hd_trn[which(!is.na(hd_trn$restecg)),]$restecg)
+hd_trn[which(is.na(hd_trn$thalach)),]$thalach=mean(hd_trn[which(!is.na(hd_trn$thalach)),]$thalach)
+hd_trn[which(is.na(hd_trn$exang)),]$exang=median(hd_trn[which(!is.na(hd_trn$exang)),]$exang)
+hd_trn[which(is.na(hd_trn$oldpeak)),]$oldpeak=mean(hd_trn[which(!is.na(hd_trn$oldpeak)),]$oldpeak)
+```
+
+
+Feature engineering involving the conversion of categorical columns to factor type (sex, cp, fbs, restecg, exang, location) and conversion of the categorical response variable(num- v0,v1,v2,v3,v4,v5) to binary(0- no heart disease, 1- heart disease) was performed on both the train and test splits.
+
+```{r}
+#Feature engineering of train data
+
+#converting columns to factor type
+hd_trn$sex=factor(hd_trn$sex)
+hd_trn$cp=factor(hd_trn$cp)
+hd_trn$fbs=factor(hd_trn$fbs)
+hd_trn$restecg=factor(hd_trn$restecg)
+hd_trn$exang=factor(hd_trn$exang)
+hd_trn$location=factor(hd_trn$location)
+
+#converting response variable to binary(v0 and v1)
+hd_trn$num = factor(dplyr::case_when(
+  hd_trn$num == "v0" ~ "0",
+  hd_trn$num == "v1" ~ "1",
+  hd_trn$num == "v2" ~ "1",
+  hd_trn$num == "v3" ~ "1",
+  hd_trn$num == "v4" ~ "1"
+))
+
+```
+
+```{r}
+#Feature engineering of test data
+hd_tst$sex=factor(hd_tst$sex)
+hd_tst$cp=factor(hd_tst$cp)
+hd_tst$fbs=factor(hd_tst$fbs)
+hd_tst$restecg=factor(hd_tst$restecg)
+hd_tst$exang=factor(hd_tst$exang)
+hd_tst$num=factor(hd_tst$num)
+hd_tst$location=factor(hd_tst$location)
+
+#converting response variable to binary(v0 and v1)
+hd_tst$num = factor(dplyr::case_when(
+  hd_tst$num == "v0" ~ "0",
+  hd_tst$num == "v1" ~ "1",
+  hd_tst$num == "v2" ~ "1",
+  hd_tst$num == "v3" ~ "1",
+  hd_tst$num == "v4" ~ "1"
+))
+
+```
+
+The NA values in test data were removed using na.omit.
+
+```{r}
+hd_tst=na.omit(hd_tst)
+```
+
+Looking at the distribution of positive and negative classes.
+
+```{r}
+hd_trn %>% 
+  group_by(num) %>%
+  summarise(no_rows = length(num))
+```
+
+### Modeling
+
+Three classifications models- rpart(decision tree), knn(k nearest neighbors), gbm(gradient boosting) were considered to predict if an individual has heart disease. Accuracy has been used as the evaluation criteria for models with different tuning parameters as well as for the different kinds of statistical models.
+
+rpart model: applied 5-fold cross-validation, experimented with 20 ‘cp’ values (using tuneLength=20)
+
+knn model: applied 5-fold cross validation, experimented with 50 ‘k’ values(using tuneLength=50)
+
+gbm model: applied 5-fold cross validation, experimented with default tuning parameters
+
+rf model: applied 5-fold cross validation, experimented with default tuning parameters
+
+```{r}
+#decision-tree
+rpart_trainControl=trainControl(method="cv",number=5)
+rpart_mod=train(form=num~.,data=hd_trn,trControl=rpart_trainControl,method="rpart",tuneLength=20)
+rpart_mod
+```
+
+
+```{r}
+#knn
+knn_trainControl=trainControl(method="cv",number=5)
+knn_mod=train(form=num~.,data=hd_trn,trControl=knn_trainControl,method="knn",tuneLength =50)
+knn_mod
+```
+
+
+```{r}
+#gradient-boost
+gbm_trainControl=trainControl(method="cv",number=5)
+gbm_mod=train(form=num~.,data=hd_trn,trControl=gbm_trainControl,method="gbm",verbose=FALSE)
+gbm_mod
+```
+```{r}
+rand_trainControl=trainControl(method="cv",number=5)
+marsGrid <- expand.grid(mtry=c(2,4,6,8,10))
+rand1=train( num~ ., data = hd_trn, method = "rf",
+                      trControl = rand_trainControl,tuneGrid = marsGrid)
+rand1
+```
+
+
+A validation accuracy of 0.7420836 was obtained for the rpart model with 5-fold cross-validation with cp=0. 
+A validation accuracy of  0.6780348 was obtained for the knn model with 5-fold cross-validation with k=11. 
+A validation accuracy of 0.8004884 was obtained for the gbm model with 5-fold cross-validation with n.trees = 150, interaction.depth = 2, shrinkage = 0.1 and n.minobsinnode = 10.
+A validation accuracy of 0.8062052 was obtained fpr random forest with 5-fold cross-validation.
+***
+
+## Results
+
+```{r}
+#Predicting values and calculating accuracies
+calc_acc=function(predict,actual){
+  mean(predict==actual)
+}
+
+set.seed(42)
+rpart_acc=calc_acc(predict=predict(rpart_mod,hd_tst,type="raw"),actual=hd_tst$num)
+print(paste0("The test accuracy of the best decision tree model is ",rpart_acc))
+set.seed(42)
+knn_acc=calc_acc(predict=predict(knn_mod,hd_tst,type="raw"),actual=hd_tst$num)
+print(paste0("The test accuracy of the best knn model is ",knn_acc))
+set.seed(42)
+gbm_acc=calc_acc(predict=predict(gbm_mod,hd_tst,type="raw"),actual=hd_tst$num)
+print(paste0("The test accuracy of the best gradient boosting model is ",gbm_acc))
+set.seed(42)
+rand_acc=calc_acc(predict=predict(rand1,hd_tst,type="raw"),actual=hd_tst$num)
+print(paste0("The test accuracy of the best random forest model is ",rand_acc))
+
+```
+
+```{r}
+pred=predict(rand1,hd_tst,type="raw")
+confusionMatrix(pred,hd_tst$num)
+```
+```{r}
+pred=predict(gbm_mod,hd_tst,type="raw")
+confusionMatrix(pred,hd_tst$num)
+```
+
+
+```{r}
+positives_classified=sum(hd_tst$num=="0" & predict(gbm_mod,hd_tst,type="raw")==hd_tst$num)/sum(hd_tst$num=="0")
+print(paste0("TP/P of gbm model:",positives_classified))
+```
+Considering the test accuracies of the four  models (rpart=0.754237288135593, knn= 0.652542372881356, gbm=0.796610169491525,rf=0.813559322033898), the random forest model can be declared as the best model for this scenario or analysis. 
+
+***
+
+## Discussion
+
+Using the above trained random forest model, one can predict if an individual has heart disease or not correctly almost about 80 percent of the times using the data available straightforwardly, which is quite significant. It is also observed that the model classifies an individual having a heart disease to have a disease about 80 percent of the times which is the most important(avoiding classifying an individual with heart disease to not have a heart disease).
+
+***
+
+## Appendix
+
+Data Dictionary:
+
+1.age - age in years  
+2.sex - sex (1 = male; 0 = female)  
+3.cp - hest pain type( typical angina,atypical angina,non-anginal pain,asymptomatic)  
+4.trestbps - resting blood pressure (in mm Hg on admission to the hospital)  
+5.chol - serum cholestoral in mg/dl  
+6.fbs - fasting blood sugar > 120 mg/dl (1 = true; 0 = false)  
+7.restecg - resting electrocardiographic results(normal,having ST-T wave abnormality,showing probable or definite left ventricular hypertrophy by Estes' criteria)  
+8.thalach - maximum heart rate achieved  
+9.exang - exercise induced angina (1 = yes; 0 = no)  
+10.oldpeak - ST depression induced by exercise relative to rest    
+11.slope - the slope of the peak exercise ST segment(upsloping,flat,downsloping)  
+12.ca - number of major vessels (0-3) colored by flourosopy  
+13.thal- 3 = normal; 6 = fixed defect; 7 = reversable defect  
+14.num - diagnosis of heart disease (angiographic disease status)  
+   v0: 0 major vessels with greater than 50% diameter narrowing. No presence of heart disease.  
+   v1: 1 major vessels with greater than 50% diameter narrowing.  
+   v2: 2 major vessels with greater than 50% diameter narrowing.  
+   v3: 3 major vessels with greater than 50% diameter narrowing.  
+   v4: 4 major vessels with greater than 50% diameter narrowing.  
+15.loc - location of data collection
+
